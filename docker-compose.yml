@@ -1,0 +1,144 @@
+name: scg-soa
+
+networks:
+  scg-net:
+    driver: bridge
+
+services:
+
+  # ── Bus SOA (del profesor) ────────────────────────────────────────────────
+  bus:
+    build: ./bus
+    container_name: scg-bus
+    ports:
+      - "5000:5000"
+    networks:
+      - scg-net
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.connect(('localhost',5000)); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Servicio de Autenticación ─────────────────────────────────────────────
+  sauth:
+    build:
+      context: ./services
+      dockerfile: sauth/Dockerfile
+    container_name: scg-sauth
+    depends_on:
+      bus:
+        condition: service_healthy
+    environment:
+      BUS_HOST: bus
+      BUS_PORT: "5000"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+    networks:
+      - scg-net
+    restart: on-failure:5
+
+  # ── Servicio de Gastos ────────────────────────────────────────────────────
+  sgast:
+    build:
+      context: ./services
+      dockerfile: sgast/Dockerfile
+    container_name: scg-sgast
+    depends_on:
+      bus:
+        condition: service_healthy
+    environment:
+      BUS_HOST: bus
+      BUS_PORT: "5000"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+    networks:
+      - scg-net
+    restart: on-failure:5
+
+  # ── Servicio de Saldos ────────────────────────────────────────────────────
+  ssald:
+    build:
+      context: ./services
+      dockerfile: ssald/Dockerfile
+    container_name: scg-ssald
+    depends_on:
+      bus:
+        condition: service_healthy
+    environment:
+      BUS_HOST: bus
+      BUS_PORT: "5000"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+    networks:
+      - scg-net
+    restart: on-failure:5
+
+  # ── Servicio de Comprobantes ──────────────────────────────────────────────
+  scomp:
+    build:
+      context: ./services
+      dockerfile: scomp/Dockerfile
+    container_name: scg-scomp
+    depends_on:
+      bus:
+        condition: service_healthy
+    environment:
+      BUS_HOST: bus
+      BUS_PORT: "5000"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+    networks:
+      - scg-net
+    restart: on-failure:5
+
+  # ── Servicio de Reportes ──────────────────────────────────────────────────
+  srept:
+    build:
+      context: ./services
+      dockerfile: srept/Dockerfile
+    container_name: scg-srept
+    depends_on:
+      bus:
+        condition: service_healthy
+    environment:
+      BUS_HOST: bus
+      BUS_PORT: "5000"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+    networks:
+      - scg-net
+    restart: on-failure:5
+
+  # ── Gateway API (HTTP → TCP) ──────────────────────────────────────────────
+  gateway:
+    build: ./gateway
+    container_name: scg-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      bus:
+        condition: service_healthy
+    environment:
+      BUS_HOST: bus
+      BUS_PORT: "5000"
+    networks:
+      - scg-net
+    restart: on-failure:5
+
+  # ── Frontend React + Vite ─────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: scg-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - gateway
+    environment:
+      VITE_GATEWAY_URL: http://localhost:8000
+    volumes:
+      # Hot reload: monta el código fuente del host en el contenedor
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    networks:
+      - scg-net
