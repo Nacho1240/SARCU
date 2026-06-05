@@ -22,18 +22,38 @@ Formato de respuesta:
   error  → {"status": "error", "mensaje": "Descripción"}
 """
 
+import os
 import json
+from dotenv import load_dotenv
 from supabase import create_client, Client
 from soa_lib import connect_to_bus, send_message, receive_message
 
+# Cargar variables de entorno
+load_dotenv()
+
 # ── Configuración ──────────────────────────────────────────────────────────────
-SERVICE_NAME  = "sauth"                   # SIEMPRE 5 caracteres
-SUPABASE_URL  = "TU_SUPABASE_URL_AQUI"   # ej: https://xxxx.supabase.co
-SUPABASE_KEY  = "TU_SUPABASE_SERVICE_KEY" # Debe ser service_role (no anon) para crear usuarios
+SERVICE_NAME = "sauth"
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Faltan SUPABASE_URL o SUPABASE_KEY en el archivo .env")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+def test_supabase():
+    try:
+        sb = get_supabase()
 
+        # Consulta simple
+        sb.table("profiles").select("id").limit(1).execute()
+
+        print("[sauth] ✅ Conexión exitosa a Supabase")
+
+    except Exception as e:
+        print(f"[sauth] ❌ Error conectando a Supabase: {e}")
+        raise
 def get_supabase() -> Client:
     """Crea y devuelve el cliente de Supabase con clave service_role."""
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -281,7 +301,9 @@ def procesar_mensaje(raw_payload: str) -> dict:
 # ── Main: conexión al bus y bucle principal ────────────────────────────────────
 
 def main():
+    test_supabase()
     sock = connect_to_bus()
+    
 
     try:
         # Paso 1: registrarse en el bus
