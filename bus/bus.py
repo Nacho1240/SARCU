@@ -4,6 +4,7 @@ import threading
 HOST = "0.0.0.0"
 PORT = 5000
 
+# servicio -> socket
 servicios = {}
 lock = threading.Lock()
 
@@ -16,7 +17,6 @@ def send_raw(sock, destino, payload):
 
 def receive_raw(sock):
     raw_len = sock.recv(5)
-
     if not raw_len:
         return None
 
@@ -26,16 +26,39 @@ def receive_raw(sock):
         return None
 
     data = b""
-
     while len(data) < amount:
         chunk = sock.recv(amount - len(data))
-
         if not chunk:
             return None
-
         data += chunk
 
     return data
+
+
+def route_message(origen, destino, data):
+    """
+    Envía mensaje a servicio destino si existe.
+    Evita auto-envío (loop sauth → sauth).
+    """
+    if origen == destino:
+        print(f"[BUS] ⚠ Ignorado loop {origen} → {destino}")
+        return
+
+    with lock:
+        destino_sock = servicios.get(destino)
+
+    if not destino_sock:
+        print(f"[BUS] ❌ Servicio '{destino}' no registrado")
+        return
+
+    try:
+        destino_sock.sendall(
+            str(len(data)).zfill(5).encode() + data
+        )
+        print(f"[BUS] {origen} → {destino}")
+
+    except Exception as e:
+        print(f"[BUS] Error enviando a {destino}: {e}")
 
 
 def client_handler(sock, addr):
@@ -44,7 +67,6 @@ def client_handler(sock, addr):
     try:
         while True:
             data = receive_raw(sock)
-
             if not data:
                 break
 
@@ -52,40 +74,29 @@ def client_handler(sock, addr):
             payload = data[5:].decode()
 
             # =========================
-            # SOLO REGISTRO IMPORTA
+            # REGISTRO DE SERVICIO
             # =========================
             if destino == "sinit":
                 nombre_servicio = payload
-                servicio_registrado = nombre_servicio
 
                 with lock:
                     servicios[nombre_servicio] = sock
+
+                servicio_registrado = nombre_servicio
 
                 print(f"[BUS] Servicio registrado: {nombre_servicio} desde {addr}")
 
                 send_raw(sock, "sinit", "OK")
                 continue
 
-            # 🔇 ignorar todo lo que no venga de un servicio registrado
-            if servicio_registrado is None:
+            # ignorar antes de registro
+            if not servicio_registrado:
                 continue
 
             # =========================
             # ROUTING REAL
             # =========================
-            with lock:
-                destino_sock = servicios.get(destino)
-
-            if destino_sock:
-                try:
-                    destino_sock.sendall(
-                        str(len(data)).zfill(5).encode() + data
-                    )
-                    print(f"[BUS] {servicio_registrado} → {destino}")
-                except Exception as e:
-                    print(f"[BUS] Error reenviando: {e}")
-            else:
-                print(f"[BUS] Servicio '{destino}' no registrado")
+            route_message(servicio_registrado, destino, data)
 
     except Exception as e:
         if servicio_registrado:
@@ -96,7 +107,6 @@ def client_handler(sock, addr):
     finally:
         if servicio_registrado:
             print(f"[BUS] Servicio desconectado: {servicio_registrado}")
-
             with lock:
                 servicios.pop(servicio_registrado, None)
 

@@ -144,24 +144,45 @@ def op_login(payload: dict) -> dict:
 
 def op_verify(payload: dict) -> dict:
     token = payload.get("token", "")
+    reply_to = payload.get("reply_to")
+
+    # ─────────────────────────────
+    # 🔧 MODO TEST (PING DE TOKEN FALSO)
+    # ─────────────────────────────
+    if token == "test-token":
+        return {
+            "status": "ok",
+            "user_id": "test-user",
+            "nombre": "Usuario de prueba",
+            "email": "test@local",
+            "rol": "tecnico",
+            "reply_to": reply_to
+        }
+
     if not token:
-        return {"status": "error", "mensaje": "token es obligatorio"}
+        return {
+            "status": "error",
+            "mensaje": "token es obligatorio",
+            "reply_to": reply_to
+        }
 
     try:
-        sb     = get_supabase()
+        sb = get_supabase()
         perfil = _obtener_perfil_por_token(sb, token)
-        return {
-            "status":  "ok",
-            "user_id": perfil["id"],
-            "nombre":  perfil["nombre"],
-            "email":   perfil["email"],
-            "rol":     perfil["rol"],
-        }
-    except PermissionError as e:
-        return {"status": "error", "mensaje": str(e)}
-    except Exception:
-        return {"status": "error", "mensaje": "Token inválido o expirado"}
 
+        return {
+            "status": "ok",
+            "user_id": perfil["id"],
+            "nombre": perfil["nombre"],
+            "email": perfil["email"],
+            "rol": perfil["rol"],
+            "reply_to": reply_to
+        }
+
+    except PermissionError as e:
+        return {"status": "error", "mensaje": str(e), "reply_to": reply_to}
+    except Exception:
+        return {"status": "error", "mensaje": "Token inválido", "reply_to": reply_to}
 
 def op_create_user(payload: dict) -> dict:
     token     = payload.get("token", "")
@@ -310,7 +331,12 @@ def op_update_rol(payload: dict) -> dict:
     except Exception as e:
         return {"status": "error", "mensaje": str(e)}
 
-
+def op_ping(payload: dict) -> dict:
+    return {
+        "status": "ok",
+        "mensaje": "pong",
+        "reply_to": payload.get("reply_to")
+    }
 # ── Dispatcher ─────────────────────────────────────────────────────────────────
 
 OPERACIONES = {
@@ -320,6 +346,7 @@ OPERACIONES = {
     "update_user": op_update_user,
     "list_users":  op_list_users,
     "update_rol":  op_update_rol,
+    "ping": op_ping   # 👈 NUEVO
 }
 
 
@@ -353,6 +380,7 @@ def main():
 
         while True:
             data = receive_message(sock)
+            print(data) 
             if not data:
                 print("[sauth] Bus cerró la conexión.")
                 break
@@ -360,10 +388,13 @@ def main():
             raw_payload = data[5:].decode("utf-8")
             print(f"[sauth] ← {raw_payload}")
 
-            respuesta     = procesar_mensaje(raw_payload)
+            payload = json.loads(raw_payload)
+            destino = payload.get("reply_to", SERVICE_NAME)
+
+            respuesta = procesar_mensaje(raw_payload)
             respuesta_str = json.dumps(respuesta, ensure_ascii=False)
 
-            send_message(sock, SERVICE_NAME, respuesta_str)
+            send_message(sock, destino, respuesta_str)
             print(f"[sauth] → {respuesta_str}\n")
 
     except KeyboardInterrupt:
