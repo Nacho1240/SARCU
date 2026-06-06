@@ -187,6 +187,13 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
         }).format(date);
     };
 
+const handleCerrarSesion = () => {
+    localStorage.clear(); 
+    sessionStorage.clear(); // Opcional, pero buena práctica
+    window.location.href = '/'; 
+};
+
+
     if (cargando) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-300">
@@ -253,6 +260,7 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
             <main className="flex-1 flex flex-col overflow-hidden">
                 <header className="bg-white border-b border-gray-200 px-8 py-4">
                     <div className="flex items-center justify-between">
+                        {/* Izquierda: Título y contador de rendiciones */}
                         <div>
                             <h2 className="text-2xl text-gray-900 font-semibold">
                                 {activeView === 'dashboard' ? 'Auditoría de Boletas' : 'Calendario de Egresos'}
@@ -261,7 +269,11 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                 {filteredExpenses.length} rendiciones registradas en este filtro
                             </p>
                         </div>
-                        <div className="flex items-center gap-4">
+                        
+                        {/* Derecha: Botón PDF, Monto Total y Botón de Cerrar Sesión */}
+                        <div className="flex items-center gap-6">
+                            
+                            {/* Menú de Exportación PDF */}
                             {filteredExpenses.length > 0 && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
@@ -289,12 +301,26 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="text-right">
+                            
+                            {/* Total Desembolsado */}
+                            <div className="text-right border-l border-gray-200 pl-6">
                                 <p className="text-sm text-gray-500 font-medium">Total Desembolsado</p>
                                 <p className="text-2xl font-bold text-cyan-600">${totalAmount.toLocaleString('es-CL')}</p>
                             </div>
+
+                            {/* NUEVO: Botón Cerrar Sesión */}
+                            <div className="pl-2">
+                                {/* NUEVO: Botón Cerrar Sesión (Estilo unificado) */}
+                            <div className="pl-2">
+                                <button 
+                                    onClick={handleCerrarSesion}
+                                    className="bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-full transition-colors shadow-md"
+                                >
+                                    Cerrar Sesión
+                                </button>
+                            </div>
+                            </div>
+
                         </div>
                     </div>
                 </header>
