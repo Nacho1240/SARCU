@@ -132,6 +132,27 @@ def verify(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail=result.get("mensaje"))
     return result
 
+class RegistroRequest(BaseModel):
+    token: str
+    email: str
+    password: str
+    nombre: str
+    rol: str
+    
+
+@app.post("/auth/registro")
+def registro(req: RegistroRequest):
+    result = call_service("sauth", {
+        "op":       "create_user",
+        "token":    req.token,
+        "email":    req.email,
+        "password": req.password,
+        "nombre":   req.nombre,
+        "rol":      req.rol
+    })
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("mensaje"))
+    return result
 
 # ── Gastos (/gastos) ──────────────────────────────────────────────────────────
 

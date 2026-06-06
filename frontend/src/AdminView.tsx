@@ -28,8 +28,7 @@ import {
     DropdownMenuSeparator,
 } from './dropdown-menu';
 import { downloadMultipleExpensesPDF } from './pdf-generator';
-import { LogOut } from 'lucide-react'; // Importa este icono
-import { supabase } from './lib/supabase';
+
 
 
 
