@@ -1,7 +1,7 @@
 import json
 import time
 import os
-from bus.soa_lib import connect_to_bus, send_message, receive_message
+from soa_lib import connect_to_bus, send_message, receive_message
 from supabase import create_client
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
