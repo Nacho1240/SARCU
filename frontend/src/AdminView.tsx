@@ -1,9 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, Receipt, Users, TrendingDown, Calendar as CalendarIcon, Search, X, Filter, Download, FileDown, ArrowLeftRight } from 'lucide-react';
+import { LayoutDashboard, Receipt, TrendingDown, Calendar as CalendarIcon, Search, X, Filter, Download, FileDown, ArrowLeftRight, Clock } from 'lucide-react';
 import { Button } from './button';
 import { AdminCalendar } from './admin-calendar';
 import { ExpenseDetailModal } from './expense-detail-modal';
-import { WorkerManagement } from './worker-management';
 import { Input } from './input';
 import {
     Select,
@@ -29,13 +28,13 @@ import {
     DropdownMenuSeparator,
 } from './dropdown-menu';
 import { downloadMultipleExpensesPDF } from './pdf-generator';
+import { LogOut } from 'lucide-react'; // Importa este icono
 import { supabase } from './lib/supabase';
 
-interface Worker {
-    id: string;
-    name: string;
-    balance: number;
-}
+
+
+
+const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:8000';
 
 interface Expense {
     id: string;
@@ -45,101 +44,71 @@ interface Expense {
     amount: number;
     photo: string;
     date: Date;
-
+    estado: 'pendiente' | 'aprobado' | 'rechazado';
 }
+
 interface AdminViewProps {
     onSwitchView?: () => void;
 }
 
 export default function AdminView({ onSwitchView }: AdminViewProps) {
-    const [workers, setWorkers] = useState<Worker[]>([]);
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
-    const [activeView, setActiveView] = useState<'dashboard' | 'calendar' | 'workers'>('dashboard');
+    const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboard');
+    const [cargando, setCargando] = useState(true);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [dateFilter, setDateFilter] = useState('all');
     const [amountFilter, setAmountFilter] = useState('all');
     const [workerFilter, setWorkerFilter] = useState('all');
 
+    // 1. Cargar el historial completo de egresos a través de la API Gateway (SOA)
     useEffect(() => {
-        async function fetchAdminData() {
+        async function fetchGastosSOA() {
             try {
-                const { data: perfilesData, error: perfilesError } = await supabase
-                    .from('perfiles')
-                    .select('*')
-                    .neq('rol', 'admin');
+                const token = localStorage.getItem('scg_token');
+                if (!token) return;
 
-                if (perfilesError) throw perfilesError;
+                const response = await fetch(`${GATEWAY_URL}/gastos?token=${token}`);
+                const data = await response.json();
 
-                if (perfilesData) {
-                    const formatWorkers = perfilesData.map(p => ({
-                        id: p.id,
-                        name: `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin Nombre',
-                        balance: p.saldo_disponible || 0
-                    }));
-                    setWorkers(formatWorkers);
-                }
-
-                const { data: gastosData, error: gastosError } = await supabase
-                    .from('gastos')
-                    .select('*, perfiles(nombre, apellido)');
-
-                if (gastosError) throw gastosError;
-
-                if (gastosData) {
-                    const formatExpenses = gastosData.map(g => ({
+                if (data.status === 'ok' && data.gastos) {
+                    const formatExpenses = data.gastos.map((g: any) => ({
                         id: g.id,
                         workerId: g.operario_id,
-                        workerName: g.perfiles ? `${g.perfiles.nombre || ''} ${g.perfiles.apellido || ''}`.trim() : 'Desconocido',
-                        concept: g.concepto,
+                        // Si el backend aún no hace el JOIN del nombre, mostramos los primeros caracteres del ID como respaldo
+                        workerName: g.worker_name || `Operario (${g.operario_id?.slice(0, 6)})`,
+                        concept: g.concepto || g.descripcion || 'Sin concepto',
                         amount: g.monto,
-                        photo: g.foto_url,
-                        date: new Date(g.fecha_creacion)
+                        photo: g.foto_url || g.comprobante_url || '',
+                        date: new Date(g.fecha_creacion || g.created_at || g.fecha),
+                        estado: g.estado || 'pendiente'
                     }));
                     setExpenses(formatExpenses);
                 }
             } catch (error) {
-                console.error("Error cargando datos:", error);
+                console.error("Error cargando datos de gastos vía SOA:", error);
+            } finally {
+                setCargando(false);
             }
         }
 
-        fetchAdminData();
+        fetchGastosSOA();
     }, []);
 
-    const handleAddWorker = (name: string) => {
-        const newWorker: Worker = {
-            id: Date.now().toString(),
-            name,
-            balance: 0,
-        };
-        setWorkers([...workers, newWorker]);
-    };
+    // 2. Extraer la lista de trabajadores de forma dinámica basado en las boletas existentes
+    const workersList = useMemo(() => {
+        const uniqueWorkers = new Map<string, string>();
+        expenses.forEach((exp) => {
+            if (exp.workerId) {
+                uniqueWorkers.set(exp.workerId, exp.workerName || exp.workerId);
+            }
+        });
+        return Array.from(uniqueWorkers.entries()).map(([id, name]) => ({ id, name }));
+    }, [expenses]);
 
-    const handleAddBalance = async (workerId: string, amount: number) => {
-        try {
-            const workerToUpdate = workers.find(w => w.id === workerId);
-            if (!workerToUpdate) return;
-
-            const nuevoSaldo = workerToUpdate.balance + amount;
-
-            const { error } = await supabase
-                .from('perfiles')
-                .update({ saldo_disponible: nuevoSaldo })
-                .eq('id', workerId);
-
-            if (error) throw error;
-
-            setWorkers(workers.map((worker) =>
-                worker.id === workerId ? { ...worker, balance: nuevoSaldo } : worker
-            ));
-        } catch (error) {
-            console.error("Error al actualizar saldo:", error);
-            alert("Hubo un error al intentar recargar el saldo.");
-        }
-    };
-
+    // 3. Filtros aplicados en memoria en el cliente
     const filteredExpenses = useMemo(() => {
         let filtered = [...expenses];
 
@@ -206,7 +175,7 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
     };
 
     const totalAmount = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-    // const totalBalance = workers.reduce((sum, worker) => sum + worker.balance, 0);
+    const totalPendientes = expenses.filter(exp => exp.estado === 'pendiente').length;
 
     const formatDate = (date: Date) => {
         return new Intl.DateTimeFormat('es-CL', {
@@ -218,8 +187,17 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
         }).format(date);
     };
 
+    if (cargando) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-300">
+                <p className="text-cyan-700 font-medium text-lg">Cargando panel de contabilidad...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="flex h-screen bg-slate-300">
+            {/* Barra Lateral Izquierda (Menú Contador) */}
             <aside className="w-64 bg-gradient-to-b from-cyan-700 to-cyan-600 text-white flex flex-col">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-1">
@@ -230,9 +208,7 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                         />
                         <h1 className="text-2xl font-semibold tracking-tight">Control Gastos</h1>
                     </div>
-
-
-                    <p className="text-cyan-100 text-sm ml-11">Panel Administrativo</p>
+                    <p className="text-cyan-100 text-sm ml-11">Módulo de Contabilidad</p>
                 </div>
 
                 <nav className="flex-1 px-3 space-y-1">
@@ -256,16 +232,6 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                         <CalendarIcon className="h-5 w-5" />
                         <span>Calendario</span>
                     </button>
-                    <button
-                        onClick={() => setActiveView('workers')}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeView === 'workers'
-                            ? 'bg-white/20 backdrop-blur-sm'
-                            : 'hover:bg-white/10'
-                            }`}
-                    >
-                        <Users className="h-5 w-5" />
-                        <span>Trabajadores</span>
-                    </button>
                 </nav>
 
                 <div className="p-4 border-t border-cyan-500">
@@ -275,84 +241,74 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-cyan-800/50 hover:bg-cyan-900/50 text-cyan-100 rounded-lg transition-colors text-sm border border-cyan-700"
                         >
                             <ArrowLeftRight className="h-4 w-4" />
-                            Cambiar a Trabajador
+                            Vista Simulación Terreno
                         </button>
+                        
+                        
                     )}
                 </div>
             </aside>
 
+            {/* Contenedor Principal */}
             <main className="flex-1 flex flex-col overflow-hidden">
                 <header className="bg-white border-b border-gray-200 px-8 py-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-2xl text-gray-900">
-                                {activeView === 'dashboard' && 'Gestión de Boletas'}
-                                {activeView === 'calendar' && 'Calendario de Gastos'}
-                                {activeView === 'workers' && 'Gestión de Trabajadores'}
+                            <h2 className="text-2xl text-gray-900 font-semibold">
+                                {activeView === 'dashboard' ? 'Auditoría de Boletas' : 'Calendario de Egresos'}
                             </h2>
                             <p className="text-sm text-gray-500 mt-1">
-                                {activeView === 'workers'
-                                    ? `${workers.length} trabajadores registrados`
-                                    : `${filteredExpenses.length} boletas registradas`}
+                                {filteredExpenses.length} rendiciones registradas en este filtro
                             </p>
                         </div>
                         <div className="flex items-center gap-4">
-                            {activeView !== 'workers' && filteredExpenses.length > 0 && (
+                            {filteredExpenses.length > 0 && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button variant="outline" className="gap-2 text-cyan-700 border-cyan-200 hover:bg-cyan-50">
                                             <Download className="h-4 w-4" />
-                                            Descargar PDF
+                                            Exportar Reporte PDF
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-64 bg-white rounded-md shadow-xl border border-gray-200 p-1 z-50">
-
                                         <DropdownMenuItem
                                             className="flex items-center cursor-pointer hover:bg-gray-100 p-2 rounded text-sm text-gray-700"
-                                            onClick={() => downloadMultipleExpensesPDF(filteredExpenses, 'Reporte de Boletas')}
+                                            onClick={() => downloadMultipleExpensesPDF(filteredExpenses, 'Reporte de Boletas Filtradas')}
                                         >
                                             <FileDown className="h-4 w-4 mr-3 text-cyan-600" />
-                                            Descargar filtradas ({filteredExpenses.length})
+                                            Descargar vistas ({filteredExpenses.length})
                                         </DropdownMenuItem>
-
                                         <DropdownMenuSeparator className="bg-gray-200 my-1" />
-
                                         <DropdownMenuItem
                                             className="flex items-center cursor-pointer hover:bg-gray-100 p-2 rounded text-sm text-gray-700"
-                                            onClick={() => downloadMultipleExpensesPDF(expenses, 'Reporte total de Egresos')}
+                                            onClick={() => downloadMultipleExpensesPDF(expenses, 'Reporte de Auditoría Total')}
                                         >
                                             <Receipt className="h-4 w-4 mr-3 text-cyan-600" />
-                                            Descargar todo el historial ({expenses.length})
+                                            Descargar historial completo ({expenses.length})
                                         </DropdownMenuItem>
-
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="text-right">
-                                <p className="text-sm text-gray-500">Total Gastado</p>
-                                <p className="text-2xl text-cyan-600">${totalAmount.toLocaleString('es-CL')}</p>
+                                <p className="text-sm text-gray-500 font-medium">Total Desembolsado</p>
+                                <p className="text-2xl font-bold text-cyan-600">${totalAmount.toLocaleString('es-CL')}</p>
                             </div>
                         </div>
                     </div>
                 </header>
 
                 <div className="flex-1 overflow-auto p-8">
-                    {activeView === 'workers' ? (
-                        <WorkerManagement
-                            workers={workers}
-                            onAddWorker={handleAddWorker}
-                            onAddBalance={handleAddBalance}
-                        />
-                    ) : activeView === 'dashboard' ? (
+                    {activeView === 'dashboard' ? (
                         <div className="space-y-6">
+                            {/* Tarjetas de Indicadores Clave */}
                             <div className="grid grid-cols-4 gap-4">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <p className="text-sm text-gray-500 font-bold">Total Boletas</p>
-                                            <p className="text-3xl mt-2 text-gray-900">{filteredExpenses.length}</p>
+                                            <p className="text-3xl mt-2 font-semibold text-gray-900">{filteredExpenses.length}</p>
                                         </div>
                                         <div className="bg-cyan-100 rounded-full p-3">
                                             <Receipt className="h-6 w-6 text-cyan-600" />
@@ -363,9 +319,9 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <p className="text-sm text-gray-500 font-bold">Monto Total</p>
-                                            <p className="text-3xl mt-2 text-cyan-600">
-                                                ${(totalAmount / 1000).toFixed(0)}k
+                                            <p className="text-sm text-gray-500 font-bold">Monto Filtrado</p>
+                                            <p className="text-3xl mt-2 font-bold text-cyan-600">
+                                                ${(totalAmount / 1000).toFixed(1)}k
                                             </p>
                                         </div>
                                         <div className="bg-green-100 rounded-full p-3">
@@ -377,8 +333,8 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <p className="text-sm text-gray-500 font-bold">Promedio por Gasto</p>
-                                            <p className="text-3xl mt-2 text-gray-900">
+                                            <p className="text-sm text-gray-500 font-bold">Gasto Promedio</p>
+                                            <p className="text-3xl mt-2 font-semibold text-gray-900">
                                                 ${filteredExpenses.length > 0 ? Math.round(totalAmount / filteredExpenses.length).toLocaleString('es-CL') : 0}
                                             </p>
                                         </div>
@@ -391,21 +347,22 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <p className="text-sm text-gray-500 font-bold">Trabajadores</p>
-                                            <p className="text-3xl mt-2 text-gray-900">{workers.length}</p>
+                                            <p className="text-sm text-gray-500 font-bold">Por Revisar</p>
+                                            <p className="text-3xl mt-2 font-bold text-amber-600">{totalPendientes}</p>
                                         </div>
-                                        <div className="bg-purple-100 rounded-full p-3">
-                                            <Users className="h-6 w-6 text-purple-600" />
+                                        <div className="bg-amber-100 rounded-full p-3">
+                                            <Clock className="h-6 w-6 text-amber-600" />
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
+                            {/* Panel de Filtros */}
                             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-2 flex-1">
                                         <Filter className="h-5 w-5 text-gray-400" />
-                                        <span className="text-sm text-gray-600">Filtros:</span>
+                                        <span className="text-sm text-gray-600 font-medium">Filtros de Auditoría:</span>
                                         {activeFiltersCount > 0 && (
                                             <Badge className="bg-cyan-100 text-cyan-700">
                                                 {activeFiltersCount} activos
@@ -417,7 +374,7 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                             variant="ghost"
                                             size="sm"
                                             onClick={handleClearFilters}
-                                            className="text-gray-600"
+                                            className="text-gray-600 hover:text-gray-900"
                                         >
                                             Limpiar filtros
                                         </Button>
@@ -432,7 +389,7 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                             placeholder="Buscar por concepto..."
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-10 pr-10"
+                                            className="pl-10 pr-10 bg-white"
                                         />
                                         {searchTerm && (
                                             <button
@@ -446,11 +403,11 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
 
                                     <Select value={workerFilter} onValueChange={setWorkerFilter}>
                                         <SelectTrigger className='bg-white'>
-                                            <SelectValue placeholder="Trabajador" />
+                                            <SelectValue placeholder="Filtrar por Operario" />
                                         </SelectTrigger>
                                         <SelectContent className='bg-white border border-gray-200 shadow-md'>
-                                            <SelectItem value="all">Todos los trabajadores</SelectItem>
-                                            {workers.map((worker) => (
+                                            <SelectItem value="all">Todos los operarios</SelectItem>
+                                            {workersList.map((worker) => (
                                                 <SelectItem key={worker.id} value={worker.id}>
                                                     {worker.name}
                                                 </SelectItem>
@@ -487,25 +444,27 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                 </div>
                             </div>
 
+                            {/* Tabla de Rendiciones */}
                             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                                 <Table>
                                     <TableHeader>
                                         <TableRow className="bg-gray-50">
                                             <TableHead className="w-[80px] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Foto</TableHead>
-                                            <TableHead className="w-[20%] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Trabajador</TableHead>
-                                            <TableHead className="w-[30%] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Concepto</TableHead>
-                                            <TableHead className="w-[15%] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Monto</TableHead>
-                                            <TableHead className="w-[20%] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha y Hora</TableHead>
+                                            <TableHead className="w-[20%] text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Operario</TableHead>
+                                            <TableHead className="w-[25%] text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Descripción / Concepto</TableHead>
+                                            <TableHead className="w-[15%] text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Monto</TableHead>
+                                            <TableHead className="w-[15%] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</TableHead>
+                                            <TableHead className="w-[15%] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha de Rendición</TableHead>
                                             <TableHead className="w-[100px] text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Acción</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filteredExpenses.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center py-12">
+                                                <TableCell colSpan={7} className="text-center py-12">
                                                     <div className="flex flex-col items-center text-gray-400">
                                                         <Receipt className="h-16 w-16 mb-4" />
-                                                        <p>No hay boletas que coincidan con los filtros</p>
+                                                        <p className="font-medium">No hay boletas registradas en este período</p>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -513,43 +472,46 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                                             filteredExpenses.map((expense) => (
                                                 <TableRow
                                                     key={expense.id}
-                                                    className="cursor-pointer hover:bg-cyan-50"
+                                                    className="cursor-pointer hover:bg-cyan-50/50"
                                                     onClick={() => handleExpenseClick(expense)}
                                                 >
-                                                    <TableCell>
+                                                    <TableCell onClick={(e) => e.stopPropagation()}>
                                                         <img
                                                             src={expense.photo}
                                                             alt="Boleta"
-                                                            className="w-14 h-14 object-cover rounded"
+                                                            className="w-12 h-12 object-cover rounded border border-gray-100 shadow-sm"
                                                         />
                                                     </TableCell>
                                                     <TableCell>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="bg-cyan-100 rounded-full p-1.5">
-                                                                <Users className="h-3 w-3 text-cyan-600" />
-                                                            </div>
-                                                            <span className="font-medium">{expense.workerName}</span>
-                                                        </div>
+                                                        <span className="font-medium text-gray-800">{expense.workerName}</span>
                                                     </TableCell>
-                                                    <TableCell className="font-medium">{expense.concept}</TableCell>
-                                                    <TableCell>
-                                                        <span className="text-cyan-600">
-                                                            ${expense.amount.toLocaleString('es-CL')}
-                                                        </span>
+                                                    <TableCell className="font-medium text-gray-700">{expense.concept}</TableCell>
+                                                    <TableCell className="text-right font-semibold text-cyan-600">
+                                                        ${expense.amount.toLocaleString('es-CL')}
                                                     </TableCell>
-                                                    <TableCell className="text-gray-600">
+                                                    <TableCell className="text-center">
+                                                        <Badge className={
+                                                            expense.estado === 'aprobado' ? 'bg-green-100 text-green-700 hover:bg-green-100 border-none' :
+                                                            expense.estado === 'rechazado' ? 'bg-red-100 text-red-700 hover:bg-red-100 border-none' :
+                                                            'bg-amber-100 text-amber-700 hover:bg-amber-100 border-none'
+                                                        }>
+                                                            {expense.estado.toUpperCase()}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-gray-600 text-center text-xs">
                                                         {formatDate(expense.date)}
                                                     </TableCell>
                                                     <TableCell>
                                                         <Button
-                                                            variant="ghost"
+                                                            variant="outline"
                                                             size="sm"
+                                                            className="border-cyan-200 text-cyan-700 hover:bg-cyan-50"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleExpenseClick(expense);
                                                             }}
                                                         >
-                                                            Ver
+                                                            Auditar
                                                         </Button>
                                                     </TableCell>
                                                 </TableRow>
@@ -570,6 +532,7 @@ export default function AdminView({ onSwitchView }: AdminViewProps) {
                 </div>
             </main>
 
+            {/* Modal de Detalle */}
             <ExpenseDetailModal
                 expense={selectedExpense}
                 open={modalOpen}

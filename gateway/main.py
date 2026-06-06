@@ -171,16 +171,16 @@ def listar_gastos(token: str, estado: Optional[str] = None):
 
 @app.patch("/gastos/{gasto_id}/estado")
 def cambiar_estado(gasto_id: str, body: dict):
-    result = call_service("sgast", {
+    result = call_service("ssald", {   # <--- CAMBIAR 'sgast' POR 'ssald'
         "op":       "cambiar_estado",
         "token":    body.get("token"),
         "gasto_id": gasto_id,
-        "estado":   body.get("estado"),          # aprobado | rechazado | pendiente
+        "estado":   body.get("estado"),          
+        "motivo":   body.get("motivo", "")  # <--- AGREGAR EL MOTIVO
     })
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("mensaje"))
     return result
-
 
 # ── Saldos (/saldos) ──────────────────────────────────────────────────────────
 

@@ -11,6 +11,7 @@ interface Expense {
     photo: string;
     date: Date;
     workerName?: string;
+    estado: 'pendiente' | 'aprobado' | 'rechazado'; // <--- AGREGA ESTA LÍNEA
 }
 
 interface AdminCalendarProps {

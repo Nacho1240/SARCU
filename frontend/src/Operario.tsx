@@ -13,6 +13,7 @@ export interface Expense {
     amount: number;
     photo: string;
     date: Date;
+    estado: 'pendiente' | 'aprobado' | 'rechazado'; // <--- AGREGAR ESTO
 }
 
 interface OperarioProps {
@@ -66,7 +67,8 @@ export default function Operario({ onReturnToAdmin }: OperarioProps) {
                     concept: g.concepto || g.descripcion, 
                     amount: g.monto,
                     photo: g.comprobante_url || g.foto_url || "",
-                    date: new Date(g.fecha || g.created_at)
+                    date: new Date(g.fecha || g.created_at),
+                    estado: g.estado || 'pendiente' // Aseguramos que tenga un estado
                 }));
                 setExpenses(historialFormateado);
             }

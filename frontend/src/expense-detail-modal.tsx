@@ -1,14 +1,17 @@
-import { X, Calendar, Receipt, Download } from 'lucide-react';
+import { useState } from 'react';
+import { X, Calendar, Receipt, Download, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from './button';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogDescription,
 } from './dialog';
 import { downloadSingleExpensePDF } from './pdf-generator';
-interface Expense {
+
+const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:8000';
+
+export interface Expense {
     id: string;
     workerId?: string;
     workerName?: string;
@@ -16,6 +19,7 @@ interface Expense {
     amount: number;
     photo: string;
     date: Date;
+    estado: 'pendiente' | 'aprobado' | 'rechazado';
 }
 
 interface ExpenseDetailModalProps {
@@ -25,6 +29,8 @@ interface ExpenseDetailModalProps {
 }
 
 export function ExpenseDetailModal({ expense, open, onClose }: ExpenseDetailModalProps) {
+    const [isProcessing, setIsProcessing] = useState(false);
+
     if (!expense) return null;
 
     const formatDate = (date: Date) => {
@@ -37,14 +43,48 @@ export function ExpenseDetailModal({ expense, open, onClose }: ExpenseDetailModa
             minute: '2-digit',
         }).format(date);
     };
-    const handleDownloadPDF = async () => {
 
+    const handleDownloadPDF = async () => {
         const expenseWithDefaults = {
             ...expense,
             workerId: expense.workerId || '1',
             workerName: expense.workerName || 'Trabajador',
         };
         await downloadSingleExpensePDF(expenseWithDefaults);
+    };
+
+    const handleCambiarEstado = async (nuevoEstado: 'aprobado' | 'rechazado') => {
+        try {
+            setIsProcessing(true);
+            const token = localStorage.getItem('scg_token');
+            
+            let motivo = "";
+            if (nuevoEstado === 'rechazado') {
+                motivo = window.prompt("Ingresa el motivo del rechazo:") || "";
+                if (!motivo.trim()) {
+                    setIsProcessing(false);
+                    return; // Si el usuario cancela, detenemos el proceso
+                }
+            }
+
+            const res = await fetch(`${GATEWAY_URL}/gastos/${expense.id}/estado`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, estado: nuevoEstado, motivo })
+            });
+
+            const data = await res.json();
+            if (data.status === 'ok') {
+                alert(`Gasto ${nuevoEstado} exitosamente.`);
+                window.location.reload(); // Recarga la vista para ver los balances actualizados
+            } else {
+                alert(`Error: ${data.mensaje}`);
+            }
+        } catch (err) {
+            alert("Error de conexión con el servidor.");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     return (
@@ -75,7 +115,7 @@ export function ExpenseDetailModal({ expense, open, onClose }: ExpenseDetailModa
 
                         <div>
                             <div className="text-sm text-gray-600 mb-1">Monto</div>
-                            <p className="text-2xl text-green-600">
+                            <p className="text-2xl text-cyan-600">
                                 ${expense.amount.toLocaleString('es-CL')}
                             </p>
                         </div>
@@ -88,18 +128,38 @@ export function ExpenseDetailModal({ expense, open, onClose }: ExpenseDetailModa
                             <p className="text-gray-900 capitalize">{formatDate(expense.date)}</p>
                         </div>
                     </div>
-                    <div className="flex gap-2 ">
-                        <Button onClick={handleDownloadPDF} variant="outline" className="flex-1  mt-4 bg-cyan-800 hover:bg-cyan-300 text-white">
+
+                    {/* Botones de Auditoría si el gasto está pendiente */}
+                    {expense.estado === 'pendiente' && (
+                        <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+                            <Button 
+                                onClick={() => handleCambiarEstado('aprobado')} 
+                                disabled={isProcessing}
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                            >
+                                <CheckCircle className="h-4 w-4 mr-2" /> Aprobar
+                            </Button>
+                            <Button 
+                                onClick={() => handleCambiarEstado('rechazado')} 
+                                disabled={isProcessing}
+                                variant="destructive" 
+                                className="flex-1"
+                            >
+                                <XCircle className="h-4 w-4 mr-2" /> Rechazar
+                            </Button>
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 mt-4">
+                        <Button onClick={handleDownloadPDF} variant="outline" className="flex-1 text-cyan-800 border-cyan-200 hover:bg-cyan-50">
                             <Download className="h-4 w-4 mr-2" />
                             Descargar PDF
                         </Button>
-
+                        <Button onClick={onClose} variant="outline" className="flex-1 border-gray-200 hover:bg-gray-50">
+                            <X className="h-4 w-4 mr-2" />
+                            Cerrar
+                        </Button>
                     </div>
-                    <Button onClick={onClose} className="w-full mt-4 bg-cyan-800 hover:bg-cyan-300 text-white">
-                        <X className="h-4 w-4 mr-2" />
-                        Cerrar
-                    </Button>
-
                 </div>
             </DialogContent>
         </Dialog>
