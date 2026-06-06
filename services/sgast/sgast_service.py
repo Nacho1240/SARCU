@@ -1,7 +1,7 @@
 import json
 import time
 import os
-from soa_lib import connect_to_bus, send_message, receive_message
+from bus.soa_lib import connect_to_bus, send_message, receive_message
 from supabase import create_client
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -80,7 +80,15 @@ def _require_rol(user_id: str, roles: list[str]) -> dict | None:
     if not perfil or perfil.get("rol") not in roles:
         return None
     return perfil
-
+def _first_result(data):
+    """
+    Compatibilidad entre Supabase real y mocks de pytest.
+    Si viene una lista devuelve el primer elemento.
+    Si viene un dict devuelve el dict.
+    """
+    if isinstance(data, list):
+        return data[0] if data else None
+    return data
 
 # ─────────────────────────────────────────────
 # OPERACIONES DE GASTOS
@@ -209,74 +217,119 @@ def aprobar_gasto(payload: dict) -> dict:
 
     payload: { "op": "aprobar_gasto", "user_id": "uuid", "gasto_id": "uuid" }
     """
-    user_id  = payload.get("user_id")
+    user_id = payload.get("user_id")
     gasto_id = payload.get("gasto_id")
-    perfil   = _require_rol(user_id, ["contador"])
+    perfil = _require_rol(user_id, ["contador"])
 
     if not perfil:
         return {"status": "error", "mensaje": "Solo contadores pueden aprobar gastos"}
+
     if not gasto_id:
         return {"status": "error", "mensaje": "Falta gasto_id"}
 
-    # Verificar que esté pendiente
-    res = supabase.table("gastos").select("estado").eq("id", gasto_id).single().execute()
+    res = (
+        supabase.table("gastos")
+        .select("estado")
+        .eq("id", gasto_id)
+        .single()
+        .execute()
+    )
+
     if not res.data:
         return {"status": "error", "mensaje": "Gasto no encontrado"}
+
     if res.data["estado"] != "pendiente":
-        return {"status": "error", "mensaje": f"El gasto ya está {res.data['estado']}"}
+        return {
+            "status": "error",
+            "mensaje": f"El gasto ya está {res.data['estado']}"
+        }
 
     from datetime import datetime, timezone
+
     update = {
-        "estado":         "aprobado",
-        "contador_id":    user_id,
+        "estado": "aprobado",
+        "contador_id": user_id,
         "fecha_revision": datetime.now(timezone.utc).isoformat(),
         "motivo_rechazo": None,
     }
 
-    res = supabase.table("gastos").update(update).eq("id", gasto_id).execute()
-    return {"status": "ok", "gasto": res.data[0]}
+    res = (
+        supabase.table("gastos")
+        .update(update)
+        .eq("id", gasto_id)
+        .execute()
+    )
+
+    gasto = _first_result(res.data)
+
+    return {
+        "status": "ok",
+        "gasto": gasto,
+    }
 
 
 def rechazar_gasto(payload: dict) -> dict:
     """
     Rechaza un gasto pendiente con un motivo obligatorio.
     Rol requerido: contador.
-
-    payload: {
-        "op": "rechazar_gasto",
-        "user_id": "uuid",
-        "gasto_id": "uuid",
-        "motivo": "Comprobante ilegible"
-    }
     """
-    user_id  = payload.get("user_id")
+    user_id = payload.get("user_id")
     gasto_id = payload.get("gasto_id")
-    motivo   = payload.get("motivo", "").strip()
-    perfil   = _require_rol(user_id, ["contador"])
+    motivo = payload.get("motivo", "").strip()
+
+    perfil = _require_rol(user_id, ["contador"])
 
     if not perfil:
         return {"status": "error", "mensaje": "Solo contadores pueden rechazar gastos"}
+
     if not gasto_id:
         return {"status": "error", "mensaje": "Falta gasto_id"}
-    if not motivo:
-        return {"status": "error", "mensaje": "El motivo de rechazo es obligatorio"}
 
-    res = supabase.table("gastos").select("estado").eq("id", gasto_id).single().execute()
+    if not motivo:
+        return {
+            "status": "error",
+            "mensaje": "El motivo de rechazo es obligatorio"
+        }
+
+    res = (
+        supabase.table("gastos")
+        .select("estado")
+        .eq("id", gasto_id)
+        .single()
+        .execute()
+    )
+
     if not res.data:
         return {"status": "error", "mensaje": "Gasto no encontrado"}
+
     if res.data["estado"] != "pendiente":
-        return {"status": "error", "mensaje": f"El gasto ya está {res.data['estado']}"}
+        return {
+            "status": "error",
+            "mensaje": f"El gasto ya está {res.data['estado']}"
+        }
 
     from datetime import datetime, timezone
+
     update = {
-        "estado":         "rechazado",
-        "contador_id":    user_id,
+        "estado": "rechazado",
+        "contador_id": user_id,
         "fecha_revision": datetime.now(timezone.utc).isoformat(),
         "motivo_rechazo": motivo,
     }
 
-    res = supabase.table("gastos").update(update).eq("id", gasto_id).execute()
-    return {"status": "ok", "gasto": res.data[0]}
+    res = (
+        supabase.table("gastos")
+        .update(update)
+        .eq("id", gasto_id)
+        .execute()
+    )
+
+    gasto = _first_result(res.data)
+
+    return {
+        "status": "ok",
+        "gasto": gasto,
+    }
 
 
 def eliminar_gasto(payload: dict) -> dict:
@@ -298,7 +351,10 @@ def eliminar_gasto(payload: dict) -> dict:
 
     gasto = res.data
     if gasto["operario_id"] != user_id:
-        return {"status": "error", "mensaje": "Solo puedes eliminar tus propios gastos"}
+        return {
+            "status": "error",
+            "mensaje": "Sin permiso para eliminar gastos de otros usuarios"
+        }
     if gasto["estado"] != "pendiente":
         return {"status": "error", "mensaje": "No se puede eliminar un gasto ya revisado"}
 

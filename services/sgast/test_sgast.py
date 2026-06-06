@@ -27,7 +27,7 @@ def mock_supabase(monkeypatch):
     """
     mock_client = MagicMock()
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
-    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "fake-service-key")
+    monkeypatch.setenv("SUPABASE_KEY", "fake-service-key")
 
     with patch("supabase.create_client", return_value=mock_client):
         yield mock_client
@@ -78,12 +78,13 @@ def reload_module(mock_supabase):
     import sys
 
     # Eliminar caché si existe
-    if "sgast" in sys.modules:
-        del sys.modules["sgast"]
+    if "sgast_service" in sys.modules:
+        del sys.modules["sgast_service"]
 
     with patch("supabase.create_client", return_value=mock_supabase):
-        import sgast
-        yield sgast
+        import sgast_service
+        importlib.reload(sgast_service)
+        yield sgast_service
 
 
 # ─────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import json
 import time
-from soa_lib import connect_to_bus, send_message, receive_message
+from bus.soa_lib import connect_to_bus, send_message, receive_message
 import os
 import uuid as uuid_lib
 from supabase import create_client
