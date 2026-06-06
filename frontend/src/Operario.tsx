@@ -4,6 +4,7 @@ import { ExpenseHistory } from "./Expense_history";
 import { ExpenseForm } from './expense-form';
 import { ExpenseDetailModal } from './expense-detail-modal';
 import { Button } from './button';
+import React from 'react';
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:8000';
 
@@ -78,6 +79,12 @@ export default function Operario({ onReturnToAdmin }: OperarioProps) {
             setCargando(false);
         }
     }
+    // Agrega esto en tu interfaz dentro de operario.tsx y adminview.tsx
+
+    
+
+
+    
 
     // 2. Función de subir gasto apuntando al GATEWAY SOA
     const handleAddExpense = async (nuevoGasto: { concept: string; amount: number; photo: string; date: Date }) => {
@@ -124,7 +131,18 @@ export default function Operario({ onReturnToAdmin }: OperarioProps) {
         );
     }
 
-    return (
+const handleCerrarSesion = () => {
+    // Borra toda la información de sesión guardada
+    localStorage.clear(); 
+    sessionStorage.clear(); // Por si acaso están usando sessionStorage
+    
+    // Redirige al login
+    window.location.href = '/'; 
+};
+
+    
+
+   return (
         <div className="min-h-screen bg-gray-50">
             {view === 'form' ? (
                 <ExpenseForm
@@ -136,19 +154,32 @@ export default function Operario({ onReturnToAdmin }: OperarioProps) {
             ) : (
                 <div className="min-h-screen bg-gradient-to-b from-cyan-50 to-white">
                     <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 text-white p-6 pb-8 rounded-b-3xl shadow-lg">
-                        {onReturnToAdmin && (
-                            <div className="flex justify-start mb-4">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={onReturnToAdmin}
-                                    className="text-cyan-50 hover:text-white hover:bg-cyan-700/50 bg-cyan-900/20 rounded-full px-4 transition-colors"
-                                >
-                                    <ArrowLeft className="h-4 w-4 mr-2" />
-                                    Volver al Panel Admin
-                                </Button>
+                        
+                        {/* Contenedor superior para alinear botones (Volver a la izquierda, Cerrar Sesión a la derecha) */}
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                {onReturnToAdmin && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={onReturnToAdmin}
+                                        className="text-cyan-50 hover:text-white hover:bg-cyan-700/50 bg-cyan-900/20 rounded-full px-4 transition-colors"
+                                    >
+                                        <ArrowLeft className="h-4 w-4 mr-2" />
+                                        Volver al Panel Admin
+                                    </Button>
+                                )}
                             </div>
-                        )}
+                            
+                            {/* NUEVO: Botón de cerrar sesión adaptado con Tailwind */}
+                            <button 
+                                onClick={handleCerrarSesion}
+                                className="bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-full transition-colors shadow-md"
+                            >
+                                Cerrar Sesión
+                            </button>
+                        </div>
+
                         <div className="mb-6 flex items-center gap-4">
                             <img
                                 src="/c-mvt_logo.png"
