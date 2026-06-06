@@ -210,13 +210,10 @@ def op_create_user(payload: dict) -> dict:
         })
         nuevo_user_id = resp_auth.user.id
 
-        sb.table("profiles").insert({
-            "id":     nuevo_user_id,
+        sb.table("profiles").update({
             "nombre": nombre,
-            "email":  email,
-            "rol":    rol_nuevo,
-            "activo": True,
-        }).execute()
+            "rol": rol_nuevo
+        }).eq("id", nuevo_user_id).execute()
 
         return {
             "status":  "ok",
