@@ -168,7 +168,7 @@ class ModificarUsuarioRequest(BaseModel):
 def modificar_usuario(user_id: str, req: ModificarUsuarioRequest):
     # 1. Mandamos a actualizar el rol al servicio de Autenticación/Usuarios
     res_rol = call_service("sauth", {
-        "op": "update_user",
+        "op": "update_rol",  # <--- CORRIGE ESTO AQUÍ
         "token": req.token,
         "user_id": user_id,
         "rol": req.rol

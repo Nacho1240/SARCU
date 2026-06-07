@@ -327,6 +327,38 @@ def op_update_rol(payload: dict) -> dict:
         return {"status": "error", "mensaje": str(e)}
     except Exception as e:
         return {"status": "error", "mensaje": str(e)}
+    
+def op_delete_user(payload: dict) -> dict:
+    """Elimina un usuario de Supabase Auth y de la tabla profiles. Solo técnicos."""
+    token   = payload.get("token", "")
+    user_id = payload.get("user_id", "")
+
+    if not token or not user_id:
+        return {"status": "error", "mensaje": "token y user_id son obligatorios"}
+
+    try:
+        sb = get_supabase()
+        perfil_tecnico = _verificar_tecnico(sb, token)
+
+        # Prevenir que el técnico cometa "hara-kiri" digital
+        if perfil_tecnico["id"] == user_id:
+            return {"status": "error", "mensaje": "No puedes eliminar tu propia cuenta"}
+
+        # 1. Eliminar de Supabase Auth (requiere service_role, el cual ya tienes configurado)
+        sb.auth.admin.delete_user(user_id)
+
+        # 2. Eliminar de la tabla profiles (por si no tienes Cascade Delete en tu BD)
+        sb.table("profiles").delete().eq("id", user_id).execute()
+
+        return {"status": "ok", "user_id": user_id}
+
+    except PermissionError as e:
+        return {"status": "error", "mensaje": str(e)}
+    except Exception as e:
+        return {"status": "error", "mensaje": f"Error al eliminar usuario: {str(e)}"}
+
+
+
 
 def op_ping(payload: dict) -> dict:
     return {
@@ -343,7 +375,8 @@ OPERACIONES = {
     "update_user": op_update_user,
     "list_users":  op_list_users,
     "update_rol":  op_update_rol,
-    "ping": op_ping   # 👈 NUEVO
+    "delete_user": op_delete_user, # 👈 AQUÍ AGREGAMOS LA NUEVA
+    "ping": op_ping  
 }
 
 
