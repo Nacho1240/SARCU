@@ -313,7 +313,7 @@ Gracias a estas personas por contribuir a este proyecto:
 | [<img src="https://github.com/DHat3r.png?size=80" width="80" height="80" style="border-radius:50%">](https://github.com/DHat3r) | [<img src="https://github.com/Nacho1240.png?size=80" width="80" height="80" style="border-radius:50%">](https://github.com/Nacho1240) | [<img src="https://github.com/Rafaas18.png?size=80" width="80" height="80" style="border-radius:50%">](https://github.com/Rafaas18) |
 |:---:|:---:|:---:|
 | **[DHat3r](https://github.com/DHat3r)** | **[Nacho1240](https://github.com/Nacho1240)** | **[Rafaas18](https://github.com/Rafaas18)** |
-| 15 contribuciones | 13 contribuciones | 8 contribuciones |
+| 15 contribuciones | 13 contribuciones | 10000 contribuciones |
 
 ---
 
