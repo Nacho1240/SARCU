@@ -50,7 +50,7 @@ SCG-SOA es un **Sistema de Control de Gastos** construido sobre una arquitectura
 ## 🏗️ Arquitectura
 
 ```
-┌─────────────────┐      HTTP       ┌─────────────────┐
+┌─────────────────┐      HTTP        ┌─────────────────┐
 │   🌐 Frontend   │ ◄──────────────► │   🚪 Gateway    │
 │  React + Vite   │                  │    FastAPI      │
 │   (Puerto 5173) │                  │   (Puerto 8000) │
@@ -59,7 +59,7 @@ SCG-SOA es un **Sistema de Control de Gastos** construido sobre una arquitectura
                                               │ TCP
                                               ▼
 ┌─────────────────────────────────────────────────────────┐
-│                      🚌 Bus SOA TCP                       │
+│                      🚌 Bus SOA TCP                      │
 │                      (Puerto 5000)                      │
 └─────────────────────────────────────────────────────────┘
          │         │         │         │         │
